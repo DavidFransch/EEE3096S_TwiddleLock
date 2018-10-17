@@ -1,9 +1,9 @@
 ##############################################################################
-#EEE3096S lab 4
+#EEE3096S lab 6
 #Group 2A
 #David Fransch (FRNDAV011)
 #Richard Powrie (PWRRIC001)
-#due 7 AUG 2018
+#due 23 Oct 2018
 ##############################################################################
 
 import RPi.GPIO as GPIO
@@ -19,7 +19,6 @@ import sys
 ####BCM numbering
 #switches
 button1  = 4  #reset
-
 
 #ADC
 SPICLK   = 11          #connected to ADC pin 13
@@ -48,7 +47,6 @@ VDD     3v3        16
 #channels
 pot = 0
 
-
 #delay
 t1       = 0.5   #every 500ms
 
@@ -68,7 +66,6 @@ spi = spidev.SpiDev()
 spi.open(0,0)#bus #0 and device #0
 spi.max_speed_hz=1000000
 
-
 ##############################################################################
 #GPIO setup
 ##############################################################################
@@ -77,7 +74,6 @@ GPIO.setmode(GPIO.BCM)
 
 #set up buttons as digital inputs, using pull-up resistors
 GPIO.setup(button1, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-
 
 ##############################################################################
 #functions
@@ -93,14 +89,13 @@ def ConvertVolts(data,places):
     volts = (data * 3.3) / float(1023)
     volts = round(volts,places)
     return volts
-    
 
 #threaded callbacks
 def callback1(button1):#reset
     global timerStart
     timerStart = time.time()#reset timer
     os.system("clear")
-	print("Reset pressed")
+    print("Reset pressed")
     print(outString)
     
     
@@ -116,17 +111,17 @@ timerStart = time.time()
 while True:
     try:
         
-        if(monitor_on==True or display_count<5):
-            #read pot
-            pot_data = GetData(pot)
-            Vpot = ConvertVolts(pot_data,decimal_places)
-            
-            #create output string
-            currentTime = time.strftime("%H:%M:%S",time.localtime())        
-            timer = time.strftime("%H:%M:%S",time.gmtime(time.time()-timerStart))
-            output_string = currentTime + "  " + timer+"  " +("%3.1f V" % Vpot)
-            
-            print(output_string)
+        
+        #read pot
+        pot_data = GetData(pot)
+        Vpot = ConvertVolts(pot_data,decimal_places)
+        
+        #create output string
+        currentTime = time.strftime("%H:%M:%S",time.localtime())        
+        timer = time.strftime("%H:%M:%S",time.gmtime(time.time()-timerStart))
+        output_string = currentTime + "  " + timer+"  " +("%3.1f V" % Vpot)
+        
+        print(output_string)
                     
         #delay
         time.sleep(delay)
