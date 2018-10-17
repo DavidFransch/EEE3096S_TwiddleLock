@@ -17,29 +17,30 @@ import sys
 #Define
 ##############################################################################
 #User inputs
-secureMode = True
-displayOn = True
-right = 1 #associated with increasing voltages
-left = 0  #associated with decreasing voltages
-unknown = -1#unknown direction, for initialisation
-epsilom = 0.04 #allowable change in voltage without changing direction
+secureMode      = True
+displayOn       = True
+right           = 1    #associated with increasing voltages
+left            = 0    #associated with decreasing voltages
+unknown         = -1   #unknown direction, for initialisation
+epsilom         = 0.05 #allowable change in voltage without changing direction
 combinationDirection = [left, right, left]
 combinationTime = [1,2,3]
+timerTolerance  = 0.05 #tolerance on recorder time value in seconds
+allowedPause    = 2    #allowed pause between entries before reset
+delay           = 1#delay time every 25ms
 
 ####BCM numbering
-button1  = 4    # S line - pin for button
-LEDlocked = 14  # L line - pin for red LED to indicate locked
-LEDunlocked =15 # U line - pin for green LED to indicate unclocked
-pot = 0 #pot channel on ADC
-delay  = 0.025  #delay time every 25ms
-timerStart = time.time()
-length = 16 #array lengths for history record
-direction_record = [None]*length
-time_record = [None]*length
+button1         = 4    # S line - pin for button
+LEDlocked       = 14   # L line - pin for red LED to indicate locked
+LEDunlocked     = 15    # U line - pin for green LED to indicate unclocked
+pot             = 0    #pot channel on ADC
+length          = 16   #array lengths for history record
+dir             = [None]*length#array for record of direction
+log             = [None]*length#array for record of times
 
 #output
-outHeading = "Time      Timer     Pot    \n"#format: 2 spaces between columns
-outLines   = "---------------------------"
+outHeading = "Time      Timer     Pot    Dir  Ptim\n"#format: 2 spaces between columns
+outLines   = "------------------------------------"
 outString  = outHeading+outLines
 decimal_places = 3
 
@@ -78,8 +79,7 @@ spi.max_speed_hz=1000000
 #GPIO setup
 ##############################################################################
 #use GPIO BCM pin numbering
-GPIO.setmode(GPIO.BCM)              
-
+GPIO.setmode(GPIO.BCM)
 #set up buttons as digital inputs, using pull-up resistors
 GPIO.setup(button1, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 #set up LEDs as GPIO digital outputs
@@ -87,7 +87,6 @@ GPIO.setup(LEDlocked,GPIO.OUT)
 GPIO.output(LEDlocked,GPIO.LOW)
 GPIO.setup(LEDunlocked,GPIO.OUT)
 GPIO.output(LEDunlocked,GPIO.LOW)
-
 
 ##############################################################################
 #functions
@@ -137,10 +136,23 @@ def value():#returns value of voltage on Pot
     Vpot = ConvertVolts(pot_data,decimal_places)
     return Vpot
 
-def timerValue():
+def timerValue(timerStart):
     return round(time.time()-timerStart, decimal_places)
 
+def addRecord(direction, timevalue):
+    global dir
+    global log
+    for i in range(length-1,-1,-1):#shifts everything in array up by one
+        if(i==0):
+            dir[i] = direction
+            log[i] = timevalue
+        else:
+            dir[i] = dir[i-1]
+            log[i] = log[i-1]
+    print(dir)
+    print(log)
     
+#enable interrupt for button
 GPIO.add_event_detect(button1, GPIO.FALLING, callback=callback1,bouncetime=400)
     
 ##############################################################################
@@ -153,24 +165,32 @@ if(secureMode == False):
     combinationTime = arrSort(combinationTime)
     print(combinationTime)
 
-timerStart = time.time()
+generalTimerStart = time.time()#general timer
+pauseTimerStart = time.time()#timer for detecting how long it has been since a turn was made
 
 currentDir = right
+timer = 0
 prevVal = value()
 currentVal = value()
-timer = 0
+
 
 while True:
     try:
         currentVal = value()
-        if(currentDir == left and currentVal>prevVal+epsilom):
+        pauseTimer = timerValue(pauseTimerStart)
+        generalTimer = timerValue(generalTimerStart)
+        if(currentDir == left and currentVal>=(prevVal+epsilom)):
+            if(pauseTimer<allowedPause):
+                addRecord(currentDir,generalTimer)#add record of direction and time
+                
+            generalTimerStart = time.time()#reset timer
             currentDir = right
-            timer = timerValue()
-            timerStart = time.time()#reset timer
-        elif(currentDir == right and currentVal<prevVal-epsilom):
+        elif(currentDir == right and currentVal<=(prevVal-epsilom)):
+            if(pauseTimer<allowedPause):
+                addRecord(currentDir,generalTimer)#add record of direction and time
+            
+            generalTimerStart = time.time()#reset timer
             currentDir = left
-            timer = timerValue()
-            timerStart = time.time()#reset timer
         
         #if(secureMode == True):#secure mode code here
             
@@ -179,13 +199,24 @@ while True:
             
         if(displayOn == True):
             #create output string
+            direction = "R"
+            if(currentDir == 0):
+                direction="L"
             currentTime = time.strftime("%H:%M:%S",time.localtime())        
-            output_string = currentTime + "  " + ("%3.0f" % timerValue())+"  " +("%3.1f V" % currentVal)+"  "+str(currentDir)
+            output_string = currentTime   + "  " +("%3.0f" % generalTimer)
+            output_string = output_string + "       " +("%3.1f V" % currentVal)
+            output_string = output_string + "  " +direction
+            output_string = output_string + "   " +("%3.0f" % pauseTimer)
             print(output_string)
+            
         
         
         if(currentVal>prevVal+epsilom or currentVal<prevVal-epsilom):
             prevVal = currentVal
+            pauseTimerStart = time.time()#reset pause timer
+        
+        if(pauseTimer>=allowedPause):#reset value if currently pausing
+            currentVal=0.0
         #delay
         time.sleep(delay)
         
