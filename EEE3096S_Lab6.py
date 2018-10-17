@@ -16,15 +16,37 @@ import sys
 ##############################################################################
 #Define
 ##############################################################################
+#User inputs
+secureMode = True
+displayOn = False
+right = 1 #associated with increasing voltages
+left = 0  #associated with decreasing voltages
+unkown = -1#unknown direction, for initialisation
+combinationDirection = [left, right, left]
+combinationTime = [1,2,3]
+
 ####BCM numbering
-#switches
-button1  = 4  #reset
+button1  = 4    # S line - pin for button
+LEDlocked = 14  # L line - pin for red LED to indicate locked
+LEDunlocked =15 # U line - pin for green LED to indicate unclocked
+pot = 0 #pot channel on ADC
+delay  = 0.025   #delay time every 25ms
+timerStart = time.time()
+length = 16 #array lengths for history record
+direction_record = [None]*length
+time_record = [None]*length
+
+#output
+outHeading = "Time      Timer     Pot    \n"#format: 2 spaces between columns
+outLines   = "---------------------------"
+outString  = outHeading+outLines
+decimal_places = 3
 
 #ADC
-SPICLK   = 11          #connected to ADC pin 13
-SPIMOSI  = 10          #connected to ADC pin 11
-SPIMISO  = 9           #connected to ADC pin 12
-SPICS    = 8           #select ADC by pulling low, default high for no comms
+SPICLK   = 11   #connected to ADC pin 13
+SPIMOSI  = 10   #connected to ADC pin 11
+SPIMISO  = 9    #C line - connected to ADC pin 12
+SPICS    = 8    #select ADC by pulling low, default high for no comms
 """ADC set up as follows:
 Channel Peripheral ADC pin Selection bits
 CH0     Pot        1       1000
@@ -44,21 +66,6 @@ VREF    3v3        15
                   = digital_output_code*3.3/1024
 VDD     3v3        16
 """
-#channels
-pot = 0
-
-#delay
-t1       = 0.5   #every 500ms
-
-#output
-outHeading = "Time      Timer     Pot    \n"#format: 2 spaces between columns
-outLines   = "---------------------------"
-outString  = outHeading+outLines
-
-decimal_places = 3
-delay = t1
-timerStart = time.time()
-
 ##############################################################################
 #SPI setup
 ##############################################################################
@@ -74,6 +81,10 @@ GPIO.setmode(GPIO.BCM)
 
 #set up buttons as digital inputs, using pull-up resistors
 GPIO.setup(button1, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+#set up LEDs as GPIO digital outputs
+GPIO.setup(LEDlocked,GPIO.OUT)
+GPIO.setup(LEDunlocked,GPIO.OUT)
+
 
 ##############################################################################
 #functions
@@ -90,6 +101,12 @@ def ConvertVolts(data,places):
     volts = round(volts,places)
     return volts
 
+def arrSort(arr):#function to sort in descending order
+    sortedArr
+    
+    return sortedArr
+    
+
 #threaded callbacks
 def callback1(button1):#reset
     global timerStart
@@ -98,6 +115,22 @@ def callback1(button1):#reset
     print("Reset pressed")
     print(outString)
     
+def L_lineOut():
+    GPIO.output(LEDlocked,GPIO.HIGH)
+    delay(2)
+    GPIO.output(LEDlocked,GPIO.LOW)
+
+def U_lineOut():
+    GPIO.output(LEDunlocked,GPIO.HIGH)
+    delay(2)
+    GPIO.output(LEDunlocked,GPIO.LOW)
+    
+def value():#returns value of voltage on Pot
+    #read pot
+    pot_data = GetData(pot)
+    Vpot = ConvertVolts(pot_data,decimal_places)
+    return Vpot
+
     
 GPIO.add_event_detect(button1, GPIO.FALLING, callback=callback1,bouncetime=400)
     
@@ -105,24 +138,44 @@ GPIO.add_event_detect(button1, GPIO.FALLING, callback=callback1,bouncetime=400)
 #main
 ##############################################################################
 print(outString)
+L_lineOut() #initialise lock as locked
+#Initially sort combinationTime if unsecure mode
+if(secureMode == False):
+    combinationTime = arrSort(combinationTime)
+    print(combinationTime)
+
 
 
 timerStart = time.time()
+prevDir = unknown
+prevVal = value()
+
+
 while True:
     try:
-        
-        
-        #read pot
-        pot_data = GetData(pot)
-        Vpot = ConvertVolts(pot_data,decimal_places)
+        currentVal = value()
+        if(currentVal>prevVal):
+            currentDir = right
+        else if(currentVal<prevVal):
+            currentDir = left
         
         #create output string
         currentTime = time.strftime("%H:%M:%S",time.localtime())        
         timer = time.strftime("%H:%M:%S",time.gmtime(time.time()-timerStart))
         output_string = currentTime + "  " + timer+"  " +("%3.1f V" % Vpot)
         
-        print(output_string)
-                    
+        if(displayOn = True):
+            print(output_string)
+        
+        #if(secureMode == True):#secure mode code here
+            
+            
+        #else:#unsecure mode code here
+            
+        
+        
+        prevDir = currentDir
+        prevVal = currentVal
         #delay
         time.sleep(delay)
         
