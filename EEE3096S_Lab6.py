@@ -18,10 +18,11 @@ import sys
 ##############################################################################
 #User inputs
 secureMode = True
-displayOn = False
+displayOn = True
 right = 1 #associated with increasing voltages
 left = 0  #associated with decreasing voltages
-unkown = -1#unknown direction, for initialisation
+unknown = -1#unknown direction, for initialisation
+epsilom = 0.04 #allowable change in voltage without changing direction
 combinationDirection = [left, right, left]
 combinationTime = [1,2,3]
 
@@ -30,7 +31,7 @@ button1  = 4    # S line - pin for button
 LEDlocked = 14  # L line - pin for red LED to indicate locked
 LEDunlocked =15 # U line - pin for green LED to indicate unclocked
 pot = 0 #pot channel on ADC
-delay  = 0.025   #delay time every 25ms
+delay  = 0.025  #delay time every 25ms
 timerStart = time.time()
 length = 16 #array lengths for history record
 direction_record = [None]*length
@@ -83,7 +84,9 @@ GPIO.setmode(GPIO.BCM)
 GPIO.setup(button1, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 #set up LEDs as GPIO digital outputs
 GPIO.setup(LEDlocked,GPIO.OUT)
+GPIO.output(LEDlocked,GPIO.LOW)
 GPIO.setup(LEDunlocked,GPIO.OUT)
+GPIO.output(LEDunlocked,GPIO.LOW)
 
 
 ##############################################################################
@@ -102,27 +105,30 @@ def ConvertVolts(data,places):
     return volts
 
 def arrSort(arr):#function to sort in descending order
-    sortedArr
-    
+    sortedArr = []
     return sortedArr
     
 
 #threaded callbacks
 def callback1(button1):#reset
     global timerStart
+    global displayOn
     timerStart = time.time()#reset timer
     os.system("clear")
-    print("Reset pressed")
+    if (displayOn==True):
+        print("Reset pressed")
+    else:
+        displayOn = True
     print(outString)
     
 def L_lineOut():
     GPIO.output(LEDlocked,GPIO.HIGH)
-    delay(2)
+    time.sleep(2)
     GPIO.output(LEDlocked,GPIO.LOW)
 
 def U_lineOut():
     GPIO.output(LEDunlocked,GPIO.HIGH)
-    delay(2)
+    time.sleep(2)
     GPIO.output(LEDunlocked,GPIO.LOW)
     
 def value():#returns value of voltage on Pot
@@ -130,6 +136,9 @@ def value():#returns value of voltage on Pot
     pot_data = GetData(pot)
     Vpot = ConvertVolts(pot_data,decimal_places)
     return Vpot
+
+def timerValue():
+    return round(time.time()-timerStart, decimal_places)
 
     
 GPIO.add_event_detect(button1, GPIO.FALLING, callback=callback1,bouncetime=400)
@@ -144,38 +153,39 @@ if(secureMode == False):
     combinationTime = arrSort(combinationTime)
     print(combinationTime)
 
-
-
 timerStart = time.time()
-prevDir = unknown
-prevVal = value()
 
+currentDir = right
+prevVal = value()
+currentVal = value()
+timer = 0
 
 while True:
     try:
         currentVal = value()
-        if(currentVal>prevVal):
+        if(currentDir == left and currentVal>prevVal+epsilom):
             currentDir = right
-        else if(currentVal<prevVal):
+            timer = timerValue()
+            timerStart = time.time()#reset timer
+        elif(currentDir == right and currentVal<prevVal-epsilom):
             currentDir = left
-        
-        #create output string
-        currentTime = time.strftime("%H:%M:%S",time.localtime())        
-        timer = time.strftime("%H:%M:%S",time.gmtime(time.time()-timerStart))
-        output_string = currentTime + "  " + timer+"  " +("%3.1f V" % Vpot)
-        
-        if(displayOn = True):
-            print(output_string)
+            timer = timerValue()
+            timerStart = time.time()#reset timer
         
         #if(secureMode == True):#secure mode code here
             
             
         #else:#unsecure mode code here
             
+        if(displayOn == True):
+            #create output string
+            currentTime = time.strftime("%H:%M:%S",time.localtime())        
+            output_string = currentTime + "  " + ("%3.0f" % timerValue())+"  " +("%3.1f V" % currentVal)+"  "+str(currentDir)
+            print(output_string)
         
         
-        prevDir = currentDir
-        prevVal = currentVal
+        if(currentVal>prevVal+epsilom or currentVal<prevVal-epsilom):
+            prevVal = currentVal
         #delay
         time.sleep(delay)
         
