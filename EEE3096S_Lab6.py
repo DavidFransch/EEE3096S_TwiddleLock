@@ -17,17 +17,19 @@ import sys
 #Define
 ##############################################################################
 #User inputs
-secureMode      = True
-displayOn       = True
+entered         = False
+secureMode      = False
+displayOn       = False
 right           = 1    #associated with increasing voltages
 left            = 0    #associated with decreasing voltages
 unknown         = -1   #unknown direction, for initialisation
-epsilom         = 0.05 #allowable change in voltage without changing direction
-combinationDirection = [left, right, left]
-combinationTime = [1,2,3]
+epsilom         = 0.1 #allowable change in voltage without changing direction
+combinationDirection = [0, 1, 0]#[left, right, left]
+combinationTime = [1,2,1]
 timerTolerance  = 0.05 #tolerance on recorder time value in seconds
-allowedPause    = 2    #allowed pause between entries before reset
-delay           = 1#delay time every 25ms
+allowedPause    = 1    #allowed pause between entries before reset
+delay           = 0.025#delay time every 25ms
+inputTime       = 6
 
 ####BCM numbering
 button1         = 4    # S line - pin for button
@@ -104,21 +106,41 @@ def ConvertVolts(data,places):
     return volts
 
 def arrSort(arr):#function to sort in descending order
-    sortedArr = []
-    return sortedArr
-    
+    for i in range(len(arr)-1):
+        for j in range (len(arr)-1):
+            if((arr[j] is not None) and (arr[j+1] is not None)):
+                if(arr[j]>arr[j+1]):
+                    temp = arr[j]
+                    arr[j]=arr[j+1]
+                    arr[j+1]=temp
+
+    sortedArr = arr
+    return sortedArr    
 
 #threaded callbacks
 def callback1(button1):#reset
     global timerStart
     global displayOn
+    global entered
+    global secureTimerStart
+
+    secureTimerStart = time.time()
+    entered = True
     timerStart = time.time()#reset timer
     os.system("clear")
     if (displayOn==True):
         print("Reset pressed")
+        print("Enter combination")
+    #else:
+        #while(currentVal != prevVal):
+        #print(outString)
+        #displayOn = True
+    
+    if(secureMode == True):
+        print("entered secure mode")
     else:
-        displayOn = True
-    print(outString)
+        print("unsecure mode")
+    clearArr()
     
 def L_lineOut():
     GPIO.output(LEDlocked,GPIO.HIGH)
@@ -145,12 +167,20 @@ def addRecord(direction, timevalue):
     for i in range(length-1,-1,-1):#shifts everything in array up by one
         if(i==0):
             dir[i] = direction
-            log[i] = timevalue
+            log[i] = int(round(timevalue))
         else:
             dir[i] = dir[i-1]
             log[i] = log[i-1]
-    print(dir)
-    print(log)
+    #print(dir)
+    #print(log)
+    print("direction: ",dir[0])
+    print("time: ", log[0])
+
+def clearArr():
+    global dir
+    global log
+    dir = [None]*length#array for record of direction
+    log = [None]*length#array for record of times
     
 #enable interrupt for button
 GPIO.add_event_detect(button1, GPIO.FALLING, callback=callback1,bouncetime=400)
@@ -158,65 +188,134 @@ GPIO.add_event_detect(button1, GPIO.FALLING, callback=callback1,bouncetime=400)
 ##############################################################################
 #main
 ##############################################################################
-print(outString)
 L_lineOut() #initialise lock as locked
-#Initially sort combinationTime if unsecure mode
-if(secureMode == False):
-    combinationTime = arrSort(combinationTime)
-    print(combinationTime)
+
+###Initially sort combinationTime if unsecure mode
+##if(secureMode == False):
+##    combinationTime = arrSort(combinationTime)
+##    #print(combinationTime)
 
 generalTimerStart = time.time()#general timer
 pauseTimerStart = time.time()#timer for detecting how long it has been since a turn was made
+secureTimerStart = time.time()
 
 currentDir = right
 timer = 0
 prevVal = value()
 currentVal = value()
+locked = True
 
 
 while True:
     try:
-        currentVal = value()
-        pauseTimer = timerValue(pauseTimerStart)
-        generalTimer = timerValue(generalTimerStart)
-        if(currentDir == left and currentVal>=(prevVal+epsilom)):
-            if(pauseTimer<allowedPause):
-                addRecord(currentDir,generalTimer)#add record of direction and time
+        if(entered):
+            currentVal = value()
+            pauseTimer = timerValue(pauseTimerStart)
+            generalTimer = timerValue(generalTimerStart)
+            secureTimer = timerValue(secureTimerStart)
+            
+            #Direction check
+            if(currentDir == left and currentVal>=(prevVal+epsilom)):
                 
-            generalTimerStart = time.time()#reset timer
-            currentDir = right
-        elif(currentDir == right and currentVal<=(prevVal-epsilom)):
-            if(pauseTimer<allowedPause):
-                addRecord(currentDir,generalTimer)#add record of direction and time
+                if(pauseTimer<allowedPause):
+                    addRecord(currentDir,generalTimer)#add record of direction and time
+                    
+                generalTimerStart = time.time()#reset timer
+                currentDir = right
+                
+            elif(currentDir == right and currentVal<=(prevVal-epsilom)):
+                
+                if(pauseTimer<allowedPause):
+                    addRecord(currentDir,generalTimer)#add record of direction and time
+                
+                generalTimerStart = time.time()#reset timer
+                currentDir = left
+            #print(secureTimer)
+            if(secureMode == True and secureTimer > inputTime):#secure mode code here & button pressed?
+                #hard code to test
+                #dir = [0, 0, 0] 
+                #log = [1, 1, 1]
+                
+                count = 0
+                for i in range (0, 3):
+                   
+                    if( (dir[i] == combinationDirection[i]) and (log[i] == combinationTime[i]) ): 
+                        count = count +1
+                    
+                if(count == 3 and locked):
+                    print("correct combo, now unlocked")
+                    locked = False
+                    U_lineOut()
+                    #break;
+                elif(count ==3 and not locked):
+                    print("correct combo, now locked")
+                    locked = True
+                    L_lineOut()
+                    #break;
+                else:
+                    print("wrong")
+                    
+                clearArr()
+                entered = False
+                
+                    
+                
+            elif(secureTimer > inputTime):#unsecure mode code here
+                #dir = [1, 2, 3]
+                #combinationDirection = [3, 1, 2]
+                print(log[0:3])
+                log = arrSort(log[0:3])
+                combinationTime = arrSort(combinationTime)
+                print(log)
+                print(combinationTime)
+                
+                count = 0
+                for i in range (0, 3):
+                    if(log[i] == combinationTime[i]):
+                        count = count +1
+                if(count == 3 and locked):
+                    print("correct combo, now unlocked")
+                    locked = False
+                    
+                    U_lineOut()
+                    
+                elif(count ==3 and not locked):
+                    print("correct combo, now locked")
+                    locked = True
+                    L_lineOut()
+                else:
+                    print("wrong")
+                clearArr()
+                entered = False
+                
+            if(displayOn == True):
+                #create output string
+                direction = "R"
+                if(currentDir == 0):
+                    direction="L"
+                
+                currentTime = time.strftime("%H:%M:%S",time.localtime())        
+                output_string = currentTime   + "  " +("%3.0f" % generalTimer)
+                output_string = output_string + "       " +("%3.1f V" % currentVal)
+                output_string = output_string + "  " +direction
+                output_string = output_string + "   " +("%3.0f" % pauseTimer)
+                #print(output_string)
+
+                #for i in range(2, 0):
+                    #output_string = output_string + dir[i]
+                    #print(output_string)
+                    
+                
             
-            generalTimerStart = time.time()#reset timer
-            currentDir = left
-        
-        #if(secureMode == True):#secure mode code here
+            #Duration check
+            if(currentVal>prevVal+epsilom or currentVal<prevVal-epsilom):
+                prevVal = currentVal
+                pauseTimerStart = time.time()#reset pause timer
+                
             
-            
-        #else:#unsecure mode code here
-            
-        if(displayOn == True):
-            #create output string
-            direction = "R"
-            if(currentDir == 0):
-                direction="L"
-            currentTime = time.strftime("%H:%M:%S",time.localtime())        
-            output_string = currentTime   + "  " +("%3.0f" % generalTimer)
-            output_string = output_string + "       " +("%3.1f V" % currentVal)
-            output_string = output_string + "  " +direction
-            output_string = output_string + "   " +("%3.0f" % pauseTimer)
-            print(output_string)
-            
-        
-        
-        if(currentVal>prevVal+epsilom or currentVal<prevVal-epsilom):
-            prevVal = currentVal
-            pauseTimerStart = time.time()#reset pause timer
-        
-        if(pauseTimer>=allowedPause):#reset value if currently pausing
-            currentVal=0.0
+            if(pauseTimer>=allowedPause):#reset value if currently pausing
+                #currentVal=0.0
+                generalTimerStart = time.time()#reset timer
         #delay
         time.sleep(delay)
         
